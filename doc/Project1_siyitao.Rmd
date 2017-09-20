@@ -1,0 +1,331 @@
+---
+title: "Project1_siyitao"
+author: "Siyi Tao"
+date: "9/17/2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+Republican Party and Democratic Party have been the hottest two political parties in the history of America, since the president of America usually comes from these two parties. To understand more about Republican Party and Democratic Party, we would like to do some research on each president's inauguration speeches. This project is supposed to answer one significant question: What are the differences and similarities between Republican Party and Democratic Party? 
+
+
+Before we begin, we should check and install needed packages, as well as load the libraries.
+
+# Step 0: check and install needed packages. Load the libraries and functions.
+
+```{r, message=FALSE, warning=FALSE}
+packages.used=c("wordcloud", "xlsx", "tm", "tidytext", "RColorBrewer", 
+                "syuzhet", "qdap", "readr", "dplyr", "rpart", "e1071",
+                "ggplot2", "reshape2", "class")
+# check packages that need to be installed.
+packages.needed=setdiff(packages.used, 
+                        intersect(installed.packages()[,1],  
+                                  packages.used))
+# install additional packages
+if(length(packages.needed)>0){
+  install.packages(packages.needed, dependencies = TRUE,
+                   repos='http://cran.us.r-project.org')
+}
+library(wordcloud)
+library(xlsx)
+library(tm)
+library(tidytext)
+library(RColorBrewer)
+library(syuzhet)
+library(qdap)
+library(readr)
+library(dplyr)
+library(rpart)
+library(class)
+library(e1071)
+library(ggplot2)
+library(reshape2)
+```
+
+For the first step, we read all needed data: InaugurationInfo.xlsx, and inaugural speeches text files into R. After loading, we do necessary transformations to data so they can be used in the next step.
+
+# Step 1: Text processing 
+
+```{r}
+#Read all speech documents into a corpus
+folder.path="../data/inauguralSpeeches"
+speeches=list.files(path = folder.path, pattern = "*.txt")
+ff.all<-Corpus(DirSource(folder.path))
+#Read inaugural speech information
+inaug_info <- read.xlsx(file="../data/InaugurationInfo.xlsx", 
+ sheetName = "Sheet1", as.data.frame=TRUE, header=TRUE, stringsAsFactors = FALSE)
+
+#Separate into two parties
+file_repub <- paste("inaug", inaug_info$File[inaug_info$Party=="Republican"],
+          "-", inaug_info$Term[inaug_info$Party=="Republican"], ".txt", sep="")
+file_democ <- paste("inaug", inaug_info$File[inaug_info$Party=="Democratic"],
+          "-", inaug_info$Term[inaug_info$Party=="Democratic"], ".txt", sep="")
+
+#Remove words that may cause misunderstandings
+ff.all<-tm_map(ff.all, stripWhitespace)
+ff.all<-tm_map(ff.all, content_transformer(tolower))
+ff.all<-tm_map(ff.all, removeWords, stopwords("english"))
+ff.all<-tm_map(ff.all, removeWords, character(0))
+ff.all<-tm_map(ff.all, removePunctuation)
+
+dtm <- DocumentTermMatrix(ff.all,
+                          control = list(weighting = function(x)
+                                             weightTfIdf(x, 
+                                                         normalize =FALSE),
+                                         stopwords = TRUE))
+
+dtm.matrix <- t(as.matrix(dtm))
+dtm.matrix.repub <- rowSums(dtm.matrix[,colnames(dtm.matrix) %in% file_repub])
+dtm.matrix.democ <- rowSums(dtm.matrix[,colnames(dtm.matrix) %in% file_democ])
+dtm.matrix.new <- cbind(dtm.matrix.repub, dtm.matrix.democ)
+colnames(dtm.matrix.new) <- c("Republican", "Democratic")
+
+ff.dtm=tidy(dtm)
+#Read term, frequency for separate parties
+term_repub <- ff.dtm$term[ff.dtm$document %in% file_repub]
+count_repub <- ff.dtm$count[ff.dtm$document %in% file_repub]
+term_democ <- ff.dtm$term[ff.dtm$document %in% file_democ]
+count_democ <- ff.dtm$count[ff.dtm$document %in% file_democ]
+```
+
+
+# Step 2: Visualization - Word Cloud
+
+The first plot is a word cloud of republican party. As we can see from the picture, republican party focuses on nergo, tariff, business and loans, which are the most realistic issues in America.
+
+```{r, fig.height=6, fig.width=6, warning=FALSE}
+wordcloud(term_repub, count_repub, 
+              scale=c(4,0.5),
+              max.words=50,
+              min.freq=3,
+              random.order=FALSE,
+              rot.per=0.4,
+              use.r.layout=FALSE,
+              random.color=FALSE,
+              colors=brewer.pal(8,"Blues"))
+text(x= 0.53, y=0.95, "Word Cloud of Republican Party", cex=2)
+dev.copy(jpeg,filename='../output/wordcloud-republican.jpg');
+dev.off();
+```
+
+The second plot is a word cloud of democratic party. We can notice that Texas has been the most frequent word that democratic party uses, but Texas is known as one of the most Republican states in the U.S. Republicans control all statewide Texas offices, both houses of the state legislature and have a majority in the Texas congressional delegation. Democratic party seems to put a great emphasis on strengthening connections among different states in America.
+
+```{r, fig.height=6, fig.width=6, warning=FALSE}
+wordcloud(term_democ, count_democ, 
+              scale=c(4,0.5),
+              max.words=50,
+              min.freq=3,
+              random.order=FALSE,
+              rot.per=0.4,
+              use.r.layout=FALSE,
+              random.color=FALSE,
+              colors=brewer.pal(8,"Blues"))
+text(x= 0.53, y=0.95, "Word Cloud of Democratic Party", cex=2)
+dev.copy(jpeg,filename='../output/wordcloud-democratic.jpg');
+dev.off();
+```
+
+The third plot is a word cloud comparing the frequencies of words across documents from Democratic Party and Republican Party. It is clearly shown that Democratic Party emphasizes much more democracy than Republican does, which is reasonable. At the same time, Republican Party is more practical than Democratic Party, since they talk more about social issues like laws, tax and negro. 
+
+```{r, fig.height=5, fig.width=8, warning=FALSE}
+comparison.cloud(dtm.matrix.new,
+                 scale=c(4,0.5),
+                 max.words=100,
+                 random.order=FALSE,
+                 rot.per=.3,
+                 colors=c("indianred3","lightsteelblue3"),
+                 use.r.layout=FALSE,
+                 title.size=5)
+
+dev.copy(jpeg,filename='../output/wordcloud-comparison.jpg');
+dev.off();
+```
+
+The fourth plot is to show a cloud of words share across documents from Democratic Party and Republican Party. There is no surprise that america, americas, americans are the most three popular ones in inaugural speeches, since both parties would like to make a better America. Besides, they have a lot in common about emphasis on freedom, union and people, and this is due to the atmosphere of freedom in America, which attracts a lot of people to chase their dreams here.  
+
+```{r, fig.height=6, fig.width=8, warning=FALSE}
+commonality.cloud(dtm.matrix.new, 
+                  random.order=FALSE, 
+                  scale=c(4, 0.5),
+                  colors = brewer.pal(8, "Dark2"), 
+                  max.words=100)
+
+dev.copy(jpeg,filename='../output/wordcloud-commonality.jpg');
+dev.off();
+```
+
+# Step 3: Data Processing - Sentiment Analysis
+
+This step is used to transform data for use in the following two steps. 
+
+```{r}
+#Remove inaugural speeches information of presidents from other parties
+inaug_info.new <- inaug_info[which(inaug_info$Party=="Republican" | 
+                     inaug_info$Party=="Democratic"),]
+ 
+file_term_to_text <- function(file, term){
+  text <- read_file(paste("../data/inauguralSpeeches/inaug", file,
+                         "-", term, ".txt", sep=""))
+  return(text)}
+#Read all speech text files into inaug_info.new data frame
+inaug_info.new$fulltext <-  mapply(file_term_to_text, inaug_info.new$File, 
+                                   inaug_info.new$Term)
+
+#Do sentiment analysis and read all results into sentence.df data frame
+sentence.df <- NULL
+
+for (i in 1:nrow(inaug_info.new)){
+  sentences=sent_detect(inaug_info.new$fulltext[i],
+                        endmarks = c("?", ".", "!", "|",";"))
+  if (length(sentences)>0){
+    for (j in 1:length(sentences)){
+
+        emotions <- get_nrc_sentiment(sentences[j])
+        
+        word.count <- word_count(sentences[j])
+        emotions <- 1/(word.count+0.01)*unlist(emotions)
+        new_record <- unlist(c(inaug_info.new[i,-ncol(inaug_info.new)],
+                            word.count, emotions, sentences[j]))
+        new_record <- unname(new_record)
+        sentence.df <- rbind(sentence.df, new_record)
+    }
+  }
+}
+
+
+sentence.df.new <- as.data.frame(sentence.df, row.names = NULL, 
+                                 stringsAsFactors = FALSE)
+colnames(sentence.df.new) <- c("President","File", "Term", "Party", "Words", 
+                            "Word_Count", "anger", "anticipation","disgust",
+                            "fear", "joy", "sadness", "surprise", "trust",
+                            "negative", "positive", "Sentences")
+row.names(sentence.df.new) <- NULL
+#Change all score to numeric type
+sentence.df.new$anger <- as.numeric(sentence.df.new$anger)
+sentence.df.new$anticipation <- as.numeric(sentence.df.new$anticipation)
+sentence.df.new$disgust <- as.numeric(sentence.df.new$disgust)
+sentence.df.new$fear <- as.numeric(sentence.df.new$fear)
+sentence.df.new$joy <- as.numeric(sentence.df.new$joy)
+sentence.df.new$sadness <- as.numeric(sentence.df.new$sadness)
+sentence.df.new$surprise <- as.numeric(sentence.df.new$surprise)
+sentence.df.new$trust <- as.numeric(sentence.df.new$trust)
+sentence.df.new$positive <- as.numeric(sentence.df.new$positive)
+sentence.df.new$negative <- as.numeric(sentence.df.new$negative)
+
+final.df <- sentence.df.new[,c("President", "Party", "anger","anticipation",
+                                "disgust","fear", "joy", "sadness", 
+                                "surprise", "trust", "negative", "positive")]
+final.df_center <- colMeans(final.df[,-c(1,2,11,12)],
+                                  na.rm=TRUE)
+final_tbl <- tbl_df(final.df)%>%group_by(President) %>% summarise(
+    Party = Party[1],
+    anger=mean(anger, na.rm=TRUE),
+    anticipation=mean(anticipation, na.rm=TRUE),
+    disgust=mean(disgust, na.rm=TRUE),
+    fear=mean(fear, na.rm=TRUE),
+    joy=mean(joy, na.rm=TRUE),
+    sadness=mean(sadness, na.rm=TRUE),
+    surprise=mean(surprise, na.rm=TRUE),
+    trust=mean(trust, na.rm=TRUE))
+final_mat <- as.matrix(final_tbl[,-c(1,2)])
+```
+
+# Step 4: Unsupervised Learning - K Means/Hierarchical Agglomerative
+
+I tried to use two common unsupervised learning methods: K Means, and Hierarchical Agglomerative to cluster sentiment analysis results. My ideal result is that they can be separated into two clusters, one is for Democratic Party and another is for Republican Party. But the fact is that the accuracy is usually around 50%, which means there is no obvious difference between emotions from Democratic Party and that from Republican Party.
+
+```{r}
+# K Means
+km.res <- kmeans(x = final_mat, centers=2, iter.max=2000, 
+                 algorithm="MacQueen")
+kmeans_cluster <- km.res$cluster
+party <- unname(final_tbl$Party)
+party_cluster.1 <- replace(party, party=="Republican", 1)
+party_cluster.1 <- as.numeric(replace(party_cluster.1, 
+                                      party_cluster.1=="Democratic", 2))
+party_cluster.2 <- replace(party, party=="Republican", 2)
+party_cluster.2 <- as.numeric(replace(party_cluster.2, 
+                                      party_cluster.2=="Democratic", 1))
+mean(party_cluster.1==kmeans_cluster)
+mean(party_cluster.2==kmeans_cluster)
+# Hierarchical Agglomerative
+d <- dist(final_mat, method = "euclidean") # distance matrix
+fit <- hclust(d, method="ward.D")
+groups <- cutree(fit, k=2)
+mean(party_cluster.1==groups)
+mean(party_cluster.2==groups)
+```
+
+# Step 5: Supervised Learning - Decision Tree, SVM and KNN
+
+Here, since unsupervised learning doesn't work, I would like to try another three common supervised learning ways: Decision Tree, SVM and KNN. I randomly sampled 20 records as train data, and the rest of records as test data. And the result is unsatisfied either, the accuracy of predicted result for test data is around 50%, and sometimes even lower. 
+
+```{r}
+# Decision Tree
+train.number <- 20
+train.index <- sample(x=1:nrow(final_tbl), size=train.number, replace=FALSE)
+
+fit <- rpart(formula=party_cluster.1[train.index]~
+               anger+anticipation+disgust+fear+
+               joy+sadness+surprise+trust,
+               data=final_tbl[train.index,], method="class")
+predicted <- predict(fit,final_tbl[-train.index,-c(1,2)], type = "class")
+mean(party_cluster.2[-train.index] == predicted)
+
+# SVM
+train.number <- 20
+train.index <- sample(x=1:nrow(final_tbl), size=train.number, replace=FALSE)
+fit <- svm(formula=Party~
+               anger+anticipation+disgust+fear+
+               joy+sadness+surprise+trust, data=final_tbl[train.index,],
+           type="C-classification")
+predicted <- predict(fit,final_tbl[-train.index,-c(1,2)])
+mean(final_tbl$Party[-train.index] == predicted)
+
+# KNN: K- Nearest Neighbors
+train.number <- 20
+train.index <- sample(x=1:nrow(final_tbl), size=train.number, replace=FALSE)
+train.data <- final_tbl[train.index, -c(1,2)]
+test.data <- final_tbl[-train.index, -c(1,2)]
+predicted <- knn(train.data, test.data,cl=final_tbl$Party[train.index])
+mean(final_tbl$Party[-train.index] == predicted)
+```
+
+#Step 6: Data Visualization of Sentiment Analysis
+
+According to above two steps, I assume that there is no obvious difference between emotions in inaugural speeches of presidents from Republican Party and Democratic Party. Thus, I visualized boxplot of different emotions in the following code, as we can see from the picture, Republican Party has a bigger variation among emotions since Republican Party acts more aggressively while Democratic Party is more conservative. 
+
+```{r}
+dat.m <- melt(final_tbl,id.vars='Party', 
+              measure.vars=c("anger","anticipation",
+                                "disgust","fear", "joy", "sadness", 
+                                "surprise", "trust"))
+colnames(dat.m) <- c("Party","Emotions","Sentiment")
+ggplot(dat.m, aes(x=Emotions, y=Sentiment)) +
+      geom_boxplot(aes(color=Party))
+
+dev.copy(jpeg,filename='../output/sentiment-visualiztion.jpg')
+dev.off()
+```
+
+# Conclusions:
+Through the analysis on inaugural speeches, we can see there are some differences between political parties in US, Republican and Democratic. the Republican tends to be aggressive as well as practical while the Democratic is both democratic and conservative. But generally speaking, they are similar in their emotions carried in the inaugural speeches, it is reasonable since each president is aimed at building a better world for Americans. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
